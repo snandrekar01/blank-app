@@ -89,13 +89,17 @@ def ensure_dataset_and_table(client: bigquery.Client, dataset_id: str, table_id:
     dataset_ref.location = location or "EU"
     try:
         client.get_dataset(dataset_ref)
+        st.info(f"✓ Using existing dataset: {dataset_id}")
     except NotFound:
+        st.info(f"🆕 Creating new dataset: {dataset_id}")
         client.create_dataset(dataset_ref)
 
     full_table_id = f"{client.project}.{dataset_id}.{table_id}"
     try:
         client.get_table(full_table_id)
+        st.info(f"✓ Using existing table: {table_id}")
     except NotFound:
+        st.info(f"🆕 Creating new table: {table_id}")
         schema = [
             bigquery.SchemaField("symbol", "STRING"),
             bigquery.SchemaField("title", "STRING"),
@@ -217,20 +221,66 @@ def main():
         # BigQuery save
         if save_bq:
             st.subheader("BigQuery")
+            if not project_id:
+                st.error("⚠️ Please provide a GCP Project ID in the sidebar.")
+                return
             if not dataset_id or not table_id:
-                st.warning("Please fill in Dataset and Table in the sidebar.")
-            else:
-                if st.button("Append to BigQuery"):
+                st.error("⚠️ Please fill in both Dataset and Table names in the sidebar.")
+                return
+            
+            st.info("ℹ️ BigQuery will automatically create the dataset and table if they don't exist.")
+            
+            if st.button("Append to BigQuery"):
+                with st.spinner("Connecting to BigQuery..."):
                     try:
-                        client = get_bq_client(project_id.strip() or None)
-                        ensure_dataset_and_table(client, dataset_id.strip(), table_id.strip(), location)
-                        stats = save_to_bigquery(client, df, dataset_id.strip(), table_id.strip())
-                        st.success(
-                            f"Attempted: {stats['attempted']}, newly inserted: {stats['new_rows']} "
-                            f"into `{client.project}.{dataset_id}.{table_id}`."
+                        client = get_bq_client(project_id.strip())
+                        st.success("✓ Connected to BigQuery")
+                        
+                        table_path = ensure_dataset_and_table(
+                            client, 
+                            dataset_id.strip(), 
+                            table_id.strip(), 
+                            location
                         )
+                        
+                        with st.spinner("Saving data..."):
+                            stats = save_to_bigquery(
+                                client, 
+                                df, 
+                                dataset_id.strip(), 
+                                table_id.strip()
+                            )
+                            
+                            st.success(
+                                f"✅ Save successful!\n\n"
+                                f"• Rows attempted: {stats['attempted']}\n"
+                                f"• New rows inserted: {stats['new_rows']}\n"
+                                f"• Table: `{table_path}`"
+                            )
+                            
+                            # Add view link
+                            console_url = (
+                                f"https://console.cloud.google.com/bigquery"
+                                f"?project={project_id}"
+                                f"&p={project_id}"
+                                f"&d={dataset_id}"
+                                f"&t={table_id}"
+                                f"&page=table"
+                            )
+                            st.markdown(f"[View in BigQuery Console]({console_url})")
+                            
                     except Exception as e:
-                        st.error(f"BigQuery save failed: {e}")
+                        st.error(
+                            "❌ BigQuery operation failed!\n\n"
+                            f"Error: {str(e)}\n\n"
+                            "Please check:\n"
+                            "1. Your GCP service account credentials are correctly set in `.streamlit/secrets.toml`\n"
+                            "2. The service account has BigQuery Admin permissions\n"
+                            "3. The project ID is correct and you have access to it"
+                        )
+                        # Print full error details in expander
+                        with st.expander("Detailed Error"):
+                            st.code(f"{type(e).__name__}: {str(e)}")
 
     with st.expander("Notes"):
         st.write(
