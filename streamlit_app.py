@@ -70,15 +70,31 @@ def get_bq_client(project_id_input: str | None) -> bigquery.Client:
     Builds a BigQuery client, preferring service-account creds in st.secrets.
     Falls back to ADC if available.
     """
-    if "gcp_service_account" in st.secrets:
-        sa_info = dict(st.secrets["gcp_service_account"])
-        creds = service_account.Credentials.from_service_account_info(
-            sa_info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            st.info("Using service account credentials from secrets")
+            sa_info = dict(st.secrets["gcp_service_account"])
+            creds = service_account.Credentials.from_service_account_info(
+                sa_info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+            project = project_id_input or sa_info.get("project_id")
+            if not project:
+                raise ValueError("Project ID is required but not provided in secrets or input")
+            return bigquery.Client(project=project, credentials=creds)
+        
+        # ADC (e.g., on GCE/Cloud Run)
+        st.info("No service account found in secrets, trying Application Default Credentials")
+        if not project_id_input:
+            raise ValueError("Project ID is required when using Application Default Credentials")
+        return bigquery.Client(project=project_id_input)
+    except Exception as e:
+        st.error(
+            "Failed to initialize BigQuery client. Please check:\n"
+            "1. Service account JSON is correctly formatted in secrets.toml\n"
+            "2. Project ID is correct\n"
+            f"Error details: {str(e)}"
         )
-        project = project_id_input or sa_info.get("project_id")
-        return bigquery.Client(project=project, credentials=creds)
-    # ADC (e.g., on GCE/Cloud Run); project may be None to use default
-    return bigquery.Client(project=project_id_input or None)
+        raise
 
 def ensure_dataset_and_table(client: bigquery.Client, dataset_id: str, table_id: str, location: str = "EU") -> str:
     """
@@ -87,19 +103,34 @@ def ensure_dataset_and_table(client: bigquery.Client, dataset_id: str, table_id:
     """
     dataset_ref = bigquery.Dataset(f"{client.project}.{dataset_id}")
     dataset_ref.location = location or "EU"
+    
+    # Test permissions by listing datasets
+    st.info("Testing BigQuery permissions...")
+    try:
+        list(client.list_datasets())
+        st.success("✓ Successfully connected to BigQuery with sufficient permissions")
+    except Exception as e:
+        st.error(f"❌ Permission error: {str(e)}\nPlease ensure the service account has bigquery.datasets.create permission")
+        raise
+
     try:
         client.get_dataset(dataset_ref)
         st.info(f"✓ Using existing dataset: {dataset_id}")
     except NotFound:
-        st.info(f"🆕 Creating new dataset: {dataset_id}")
-        client.create_dataset(dataset_ref)
+        st.info(f"🆕 Attempting to create dataset: {dataset_id}")
+        try:
+            client.create_dataset(dataset_ref)
+            st.success(f"✓ Successfully created dataset: {dataset_id}")
+        except Exception as e:
+            st.error(f"❌ Failed to create dataset: {str(e)}\nPlease ensure the service account has bigquery.datasets.create permission")
+            raise
 
     full_table_id = f"{client.project}.{dataset_id}.{table_id}"
     try:
         client.get_table(full_table_id)
         st.info(f"✓ Using existing table: {table_id}")
     except NotFound:
-        st.info(f"🆕 Creating new table: {table_id}")
+        st.info(f"🆕 Attempting to create table: {table_id}")
         schema = [
             bigquery.SchemaField("symbol", "STRING"),
             bigquery.SchemaField("title", "STRING"),
