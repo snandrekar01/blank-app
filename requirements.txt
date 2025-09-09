@@ -1,1 +1,7 @@
 streamlit
+requests
+beautifulsoup4
+pandas
+google-cloud-bigquery
+google-auth
+google-auth-oauthlib
