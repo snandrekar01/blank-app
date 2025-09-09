@@ -271,9 +271,4 @@ if st.session_state["last_save"]:
             st.write(f"Attempted: {info['attempted']} • New rows: {info['new_rows']}")
             st.markdown(f"[Open in BigQuery]({info['console_url']})")
 
-with st.expander("Notes"):
-    st.write(
-        "- Use `st.secrets['gcp_service_account']` for credentials (or ADC on GCP).\n"
-        "- Dataset Location (EU/US) must match the dataset region.\n"
-        "- Writes are deduped by `url_id` using a MERGE."
-    )
+
