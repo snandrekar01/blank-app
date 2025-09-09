@@ -124,7 +124,7 @@ def save_to_bigquery(client: bigquery.Client, df: pd.DataFrame, dataset_id: str,
     df2 = df.copy()
     df2["url_id"] = df2["url"].apply(lambda u: hashlib.md5(u.encode("utf-8")).hexdigest())
     df2["fetched_at"] = pd.to_datetime(df2["fetched_at"], utc=True)
-    df2["added_at"] = pd.Timestamp.utcnow(tz="UTC")
+    df2["added_at"] = pd.Timestamp.now(tz="UTC")
 
     staging = f"{full_target}__staging"
     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")
