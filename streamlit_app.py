@@ -1,11 +1,35 @@
 # streamlit_app.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, quote
 from datetime import datetime
 import hashlib
+import plotly.express as px
+from vaderSentiment.vaderSentiment im        except Exception as e:
+            st.session_state["last_prediction"] = {"error": f"{type(e).__name__}: {e}"}
+            st.error(
+                "❌ Prediction failed.\n\n"
+                f"{type(e).__name__}: {e}\n\n"
+                "Check your BigQuery connection and permissions."
+            )
+
+# Show last prediction if available
+if "last_prediction" in st.session_state and st.session_state["last_prediction"]:
+    info = st.session_state["last_prediction"]
+    if "error" in info:
+        with st.expander("Last Prediction Error"):
+            st.code(info["error"])
+    elif not predict_clicked:  # Only show if we're not already showing new results
+        with st.expander("Last Prediction Results"):
+            sentiment_color = "green" if info["sentiment"] > 0 else "red"
+            pred_color = "green" if info["prediction"] > 0 else "red"
+            st.markdown(f"**Sentiment score:** ::{sentiment_color}[{info['sentiment']:.3f}]")
+            st.markdown(f"**Predicted return:** ::{pred_color}[{info['prediction']:.2%}]")
+            st.text(info["model"].summary())sityAnalyzer
+import statsmodels.api as sm
 
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
@@ -88,18 +112,13 @@ def ensure_dataset_and_table(client: bigquery.Client, dataset_id: str, table_id:
                 f"Dataset '{dataset_id}' exists in {ds.location}, but app selected {location}. "
                 "Change the sidebar 'Location' to match."
             )
-        st.info(f"✓ Using existing dataset: {dataset_id} ({ds.location})")
     except NotFound:
-        st.info(f"🆕 Creating dataset: {dataset_id} in {ds_ref.location}")
         client.create_dataset(ds_ref)
-        st.success(f"✓ Dataset created: {dataset_id}")
 
     full_table_id = f"{client.project}.{dataset_id}.{table_id}"
     try:
         client.get_table(full_table_id)
-        st.info(f"✓ Using existing table: {table_id}")
     except NotFound:
-        st.info(f"🆕 Creating table: {table_id}")
         schema = [
             bigquery.SchemaField("symbol", "STRING"),
             bigquery.SchemaField("title", "STRING"),
@@ -153,22 +172,42 @@ def save_to_bigquery(client: bigquery.Client, df: pd.DataFrame, dataset_id: str,
 
     return {"attempted": int(len(df2)), "new_rows": to_insert, "target": full_target}
 
+def calculate_sentiment_scores(headlines_df: pd.DataFrame) -> float:
+    """Calculate average compound sentiment score for headlines."""
+    analyzer = SentimentIntensityAnalyzer()
+    scores = []
+    
+    for title in headlines_df['title']:
+        sentiment = analyzer.polarity_scores(title)
+        scores.append(sentiment['compound'])
+    
+    return pd.Series(scores).mean() if scores else 0.0
+
+def fetch_historical_data(client: bigquery.Client) -> pd.DataFrame:
+    """Fetch historical price and sentiment data from BigQuery."""
+    query = """
+    SELECT 
+        Date,
+        daily_return_pct as return,
+        aggregated_daily_compound_avg,
+        LAG(aggregated_daily_compound_avg, 1) OVER(ORDER BY Date) as aggregated_daily_compound_avg_lag
+    FROM `project-market-news.Final_data_do_not_touch.final_merged_table`
+    ORDER BY Date
+    """
+    return client.query(query).to_dataframe()
+
 # ---- app --------------------------------------------------------------------
 
 # keep state across reruns
 if "news_df" not in st.session_state:
     st.session_state["news_df"] = None
-if "last_save" not in st.session_state:
-    st.session_state["last_save"] = None
+if "last_prediction" not in st.session_state:
+    st.session_state["last_prediction"] = None
 
 st.title("🗞️ Yahoo Finance News Collector")
 st.caption("Fetch Yahoo Finance headlines and optionally append them to BigQuery (deduped by URL).")
 
-col1, col2 = st.columns([2, 1])
-with col1:
-    symbol = st.text_input("Symbol", value=DEFAULT_SYMBOL, help="Yahoo Finance ticker (e.g., ^GSPC, AAPL, MSFT)")
-with col2:
-    fetch_clicked = st.button("Fetch news", type="primary")
+fetch_clicked = st.button("Fetch S&P 500 News", type="primary")
 
 # Sidebar config
 st.sidebar.header("BigQuery (optional)")
@@ -181,13 +220,13 @@ location = st.sidebar.selectbox("Location", ["EU", "US"], index=0, help="Dataset
 # On fetch, persist the df into session so it survives reruns
 if fetch_clicked:
     try:
-        df_fetched = fetch_yahoo_news(symbol.strip())
+        df_fetched = fetch_yahoo_news(DEFAULT_SYMBOL)
         if df_fetched.empty:
             st.session_state["news_df"] = None
-            st.info("No headlines found. Try another symbol.")
+            st.info("No headlines found.")
         else:
             st.session_state["news_df"] = df_fetched
-            st.success(f"Fetched {len(df_fetched)} headlines for {symbol.strip()}.")
+            st.success(f"Fetched {len(df_fetched)} headlines from S&P 500.")
     except Exception as e:
         st.error(f"Failed to fetch news: {e}")
 
@@ -205,51 +244,56 @@ if isinstance(df, pd.DataFrame) and not df.empty:
     st.download_button(
         label="Download CSV",
         data=csv,
-        file_name=f"{symbol.strip().replace('^','_')}_yahoo_news_{datetime.utcnow().date()}.csv",
+        file_name=f"SP500_news_{datetime.utcnow().date()}.csv",
         mime="text/csv",
     )
 
-# BigQuery section is always rendered; the button is disabled if no data
-if save_bq:
-    st.subheader("BigQuery")
-    st.info("Will create the dataset/table if they don't exist (region must match 'Location').")
-    can_append = bool(project_id and dataset_id and table_id and isinstance(df, pd.DataFrame) and not df.empty)
-    append_clicked = st.button("Append to BigQuery", disabled=not can_append)
+# Prediction section is shown when we have news data
+if isinstance(df, pd.DataFrame) and not df.empty:
+    st.subheader("Sentiment Analysis & Predictions")
+    st.info("Click to analyze sentiment and predict tomorrow's returns")
+    predict_clicked = st.button("Get Predictions for Tomorrow", type="primary")
 
-    if append_clicked:
+    if predict_clicked:
         try:
+            # Calculate today's sentiment
+            today_sentiment = calculate_sentiment_scores(df)
+            st.write("📊 Today's News Sentiment Analysis")
+            
+            sentiment_color = "green" if today_sentiment > 0 else "red"
+            st.markdown(f"**Average sentiment score:** ::{sentiment_color}[{today_sentiment:.3f}]")
+            
+            # Connect to BigQuery and get historical data
             client = get_bq_client(project_id.strip())
-            st.write("Project in use:", client.project)
-            identity = getattr(getattr(client, "_credentials", None), "service_account_email", None)
-            st.write("Acting as:", identity or "user-credential")
-            st.write("Target table:", f"{client.project}.{dataset_id.strip()}.{table_id.strip()}")
+            historical_data = fetch_historical_data(client)
 
-            stats = save_to_bigquery(
-                client=client,
-                df=df,
-                dataset_id=dataset_id.strip(),
-                table_id=table_id.strip(),
-                location=location,
-            )
-
-            console_url = (
-                f"https://console.cloud.google.com/bigquery"
-                f"?project={client.project}"
-                f"&p={client.project}"
-                f"&d={dataset_id}"
-                f"&t={table_id}"
-                f"&page=table"
-            )
-            st.session_state["last_save"] = {
-                "attempted": stats["attempted"],
-                "new_rows": stats["new_rows"],
-                "target": stats["target"],
-                "console_url": console_url,
+            # Clean data and prepare for modeling
+            df_clean = historical_data.dropna()
+            
+            # Train model
+            X = df_clean[["aggregated_daily_compound_avg_lag"]]
+            y = df_clean["return"]
+            X = sm.add_constant(X)
+            model = sm.OLS(y, X).fit()
+            
+            # Make prediction for tomorrow
+            prediction = model.predict([1, today_sentiment])[0]
+            
+            # Store results in session state
+            st.session_state["last_prediction"] = {
+                "sentiment": today_sentiment,
+                "prediction": prediction,
+                "model": model
             }
-            st.success(
-                f"✅ Save successful • attempted: {stats['attempted']} • new rows: {stats['new_rows']} • table: `{stats['target']}`"
-            )
-            st.markdown(f"[View in BigQuery Console]({console_url})")
+            
+            # Display results
+            st.write("🔮 Tomorrow's Prediction")
+            pred_color = "green" if prediction > 0 else "red"
+            st.markdown(f"**Predicted return:** ::{pred_color}[{prediction:.2%}]")
+            
+            # Show model details in expander
+            with st.expander("View Model Details"):
+                st.text(model.summary())
 
         except Exception as e:
             st.session_state["last_save"] = {"error": f"{type(e).__name__}: {e}"}
