@@ -83,8 +83,10 @@ def calculate_sentiment_scores(headlines_df: pd.DataFrame) -> float:
     return pd.Series(scores).mean() if scores else 0.0
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def fetch_historical_data(client: bigquery.Client) -> pd.DataFrame:
-    """Fetch historical price and sentiment data from BigQuery."""
+def fetch_historical_data(_client: bigquery.Client) -> pd.DataFrame:
+    """Fetch historical price and sentiment data from BigQuery.
+    Note: Leading underscore in _client prevents Streamlit from hashing the client object.
+    """
     query = """
     SELECT 
         Date,
@@ -95,7 +97,7 @@ def fetch_historical_data(client: bigquery.Client) -> pd.DataFrame:
     WHERE Date IS NOT NULL
     ORDER BY Date
     """
-    df = client.query(query).to_dataframe()
+    df = _client.query(query).to_dataframe()
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
@@ -200,11 +202,6 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             analyzer = SentimentIntensityAnalyzer()
             compound_scores = [analyzer.polarity_scores(text)["compound"] for text in titles]
             compound_avg = sum(compound_scores) / len(compound_scores)
-            today_sentiment = compound_avg
-            
-            # Calculate sentiment scores
-            compound_scores = [analyzer.polarity_scores(text)["compound"] for text in titles]
-            compound_avg = sum(compound_scores) / len(compound_scores)
             
             # Step 2: Calculate aggregated sentiment
             progress_placeholder.text("Step 2/4: Calculating aggregated sentiment...")
@@ -225,75 +222,76 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             if len(df_clean) < 30:  # Minimum sample size check
                 progress_placeholder.empty()
                 progress_bar.empty()
-                st.warning("⚠️ Not enough historical data for reliable prediction.")
+                st.warning("⚠️ Not enough historical data for reliable prediction (need at least 30 days).")
+                st.stop()
+            
+            # Step 4: Train model and predict
+            progress_placeholder.text("Step 4/4: Training model and generating prediction...")
+            progress_bar.progress(100)
+            X = df_clean[["aggregated_daily_compound_avg_lag"]]
+            y = df_clean["return"]
+            X = sm.add_constant(X)
+            model = sm.OLS(y, X).fit()
+            
+            # Model validation
+            r2 = model.rsquared
+            f_pvalue = model.f_pvalue
+            
+            if f_pvalue > 0.05:
+                st.warning("⚠️ Model may not be statistically significant (p > 0.05)")
+                st.info("📌 This means the relationship between sentiment and returns might be weak.")
+            
+            # Make prediction
+            try:
+                prediction = model.predict([1, today_sentiment])[0]
+            except Exception as e:
+                progress_placeholder.empty()
+                progress_bar.empty()
+                st.error("Failed to make prediction. Error: " + str(e))
                 st.stop()
                 
-                # Step 4: Train model
-                progress_placeholder.text("Step 4/4: Training prediction model...")
-                progress_bar.progress(100)
-                X = df_clean[["aggregated_daily_compound_avg_lag"]]
-                y = df_clean["return"]
-                X = sm.add_constant(X)
-                model = sm.OLS(y, X).fit()
+            # Store results and clear progress indicators
+            progress_placeholder.empty()
+            progress_bar.empty()
+            
+            st.session_state["last_prediction"] = {
+                "sentiment": today_sentiment,
+                "prediction": prediction,
+                "model": model,
+                "timestamp": datetime.now()
+            }
+            
+            # Show prediction
+            st.write("🔮 Tomorrow's Return Prediction")
+            pred_color = "green" if prediction > 0 else "red"
+            st.markdown(f"**Predicted return:** ::{pred_color}[{prediction:.2%}]")
                 
-                # Model validation
-                r2 = model.rsquared
-                f_pvalue = model.f_pvalue
+            # Model details
+            with st.expander("View Model Details"):
+                st.text(model.summary())
                 
-                if f_pvalue > 0.05:
-                    st.warning("⚠️ Model may not be statistically significant (p > 0.05)")
-                    st.info("📌 This means the relationship between sentiment and returns might be weak.")
-                
-                # Step 5: Make prediction
-                progress_placeholder.text("Step 5/4: Generating prediction...")
-                progress_bar.progress(100)
-                try:
-                    prediction = model.predict([1, today_sentiment])[0]
-                except Exception as e:
-                    progress_placeholder.empty()
-                    progress_bar.empty()
-                    st.error("Failed to make prediction. Error: " + str(e))
-                    st.stop()
-                
-                # Store results
-                st.session_state["last_prediction"] = {
-                    "sentiment": today_sentiment,
-                    "prediction": prediction,
-                    "model": model,
-                    "timestamp": datetime.now()
-                }
-                
-                # Show prediction
-                st.write("🔮 Tomorrow's Return Prediction")
-                pred_color = "green" if prediction > 0 else "red"
-                st.markdown(f"**Predicted return:** ::{pred_color}[{prediction:.2%}]")
-                
-                # Model details
-                with st.expander("View Model Details"):
-                    st.text(model.summary())
-                    
-                # Scatter plot with more details
-                recent_data = df_clean[df_clean['Date'] >= (df_clean['Date'].max() - pd.Timedelta(days=365))]
-                fig = px.scatter(
-                    recent_data,
-                    x="aggregated_daily_compound_avg_lag",
-                    y="return",
-                    title="Sentiment vs Returns (Last 365 Days)",
-                    labels={
-                        "aggregated_daily_compound_avg_lag": "Previous Day Sentiment",
-                        "return": "Return (%)"
-                    },
-                    trendline="ols",
-                    hover_data=["Date"]
-                )
-                fig.add_vline(x=today_sentiment, line_dash="dash", line_color="red",
-                            annotation_text="Today's Sentiment")
-                fig.update_layout(
-                    xaxis_title="Previous Day Sentiment Score",
-                    yaxis_title="Return (%)",
-                    yaxis_tickformat=".2%"
-                )
-                st.plotly_chart(fig)
+            # Scatter plot with more details
+            recent_data = df_clean[df_clean['Date'] >= (df_clean['Date'].max() - pd.Timedelta(days=365))]
+            fig = px.scatter(
+                recent_data,
+                x="aggregated_daily_compound_avg_lag",
+                y="return",
+                title="Sentiment vs Returns (Last 365 Days)",
+                labels={
+                    "aggregated_daily_compound_avg_lag": "Previous Day Sentiment",
+                    "return": "Return (%)"
+                },
+                trendline="ols",
+                hover_data=["Date"]
+            )
+            fig.add_vline(x=today_sentiment, line_dash="dash", line_color="red",
+                        annotation_text="Today's Sentiment")
+            fig.update_layout(
+                xaxis_title="Previous Day Sentiment Score",
+                yaxis_title="Return (%)",
+                yaxis_tickformat=".2%"
+            )
+            st.plotly_chart(fig)
 
         except Exception as e:
             st.session_state["last_prediction"] = {"error": str(e)}
