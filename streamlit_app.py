@@ -211,7 +211,15 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             
             st.write("📊 Today's News Sentiment")
             sentiment_color = "green" if today_sentiment > 0 else "red"
-            st.markdown(f"**Average sentiment score:** ::{sentiment_color}[{today_sentiment:.3f}]")
+            sentiment_symbol = "↑" if today_sentiment > 0 else "↓"
+            st.markdown(
+                f"""
+                <div style='background-color: {sentiment_color}22; padding: 20px; border-radius: 10px; border-left: 5px solid {sentiment_color}'>
+                    <h3 style='margin:0; color: {sentiment_color}'>{sentiment_symbol} {today_sentiment:.3f}</h3>
+                </div>
+                """
+                , unsafe_allow_html=True
+            )
             
             # Step 3: Fetch historical data
             progress_placeholder.text("Step 3/4: Fetching historical data...")
@@ -337,38 +345,84 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             ))
             st.plotly_chart(fig_pred, use_container_width=True)
 
-            # 3. Recent Performance
-            last_30_days = df_clean.tail(30).copy()
-            last_30_days['Predicted'] = model.predict(sm.add_constant(last_30_days['aggregated_daily_compound_avg_lag']))
+            # 3. Model Fit Visualization
+            fig_model_fit = go.Figure()
             
-            fig_performance = go.Figure()
-            fig_performance.add_trace(go.Scatter(
-                x=last_30_days['Date'],
-                y=last_30_days['return'] * 100,
-                name='Actual Returns',
-                line=dict(color='blue')
+            # Sort by sentiment for better visualization
+            sorted_data = df_clean.sort_values('aggregated_daily_compound_avg_lag')
+            X_sorted = sorted_data['aggregated_daily_compound_avg_lag']
+            
+            # Actual returns vs sentiment scatter plot
+            fig_model_fit.add_trace(go.Scatter(
+                x=df_clean['aggregated_daily_compound_avg_lag'],
+                y=df_clean['return'] * 100,
+                mode='markers',
+                name='Historical Returns',
+                marker=dict(
+                    color='rgba(0, 0, 255, 0.5)',  # Semi-transparent blue
+                    size=8,
+                    opacity=0.6
+                )
             ))
-            fig_performance.add_trace(go.Scatter(
-                x=last_30_days['Date'],
-                y=last_30_days['Predicted'] * 100,
-                name='Predicted Returns',
-                line=dict(color='red', dash='dash')
+            
+            # Model prediction line
+            y_pred = model.predict(sm.add_constant(X_sorted)) * 100
+            fig_model_fit.add_trace(go.Scatter(
+                x=X_sorted,
+                y=y_pred,
+                mode='lines',
+                name='Model Trend',
+                line=dict(color='red', width=2)
             ))
-            fig_performance.update_layout(
-                title='Model Performance (Last 30 Days)',
-                xaxis_title='Date',
+            
+            # Add today's prediction point
+            fig_model_fit.add_trace(go.Scatter(
+                x=[today_sentiment],
+                y=[prediction * 100],
+                mode='markers',
+                name="Today's Prediction",
+                marker=dict(
+                    color='green',
+                    size=15,
+                    symbol='star'
+                )
+            ))
+            
+            fig_model_fit.update_layout(
+                title={
+                    'text': 'Historical Relationship: Sentiment vs Returns',
+                    'y':0.95
+                },
+                xaxis_title='Previous Day Sentiment Score',
                 yaxis_title='Return (%)',
-                hovermode='x unified'
+                hovermode='closest',
+                showlegend=True,
+                annotations=[
+                    dict(
+                        x=0.02,
+                        y=0.98,
+                        xref='paper',
+                        yref='paper',
+                        text=f'Model R² = {r2:.3f}',
+                        showarrow=False,
+                        bgcolor='rgba(255, 255, 255, 0.8)',
+                        borderpad=4
+                    )
+                ]
             )
-            st.plotly_chart(fig_performance, use_container_width=True)
+            st.plotly_chart(fig_model_fit, use_container_width=True)
 
             # Add some explanatory text
             st.markdown("""
             ### 📈 Understanding the Charts
             
             1. **Sentiment Gauge**: Shows today's market sentiment from very negative (-1) to very positive (+1)
-            2. **Prediction Distribution**: Shows how tomorrow's predicted return compares to historical returns
-            3. **Recent Performance**: Compares our model's predictions with actual returns over the last 30 days
+            2. **Return Prediction**: Shows predicted return within typical market movement range (90% of historical returns)
+            3. **Historical Relationship**: Shows how sentiment relates to returns:
+                - Blue dots: Past market returns
+                - Red line: Overall trend found by the model
+                - Green star: Where today's prediction falls
+                - R² value shows how well sentiment explains return variations (higher is better)
             """)
 
         except Exception as e:
