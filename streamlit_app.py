@@ -280,12 +280,12 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 domain={'x': [0, 1], 'y': [0, 1]},
                 gauge={
                     'axis': {'range': [-1, 1]},
-                    'bar': {'color': "darkblue"},
+                    'bar': {'color': "#000080"},  # dark blue
                     'steps': [
-                        {'range': [-1, -0.5], 'color': "red"},
-                        {'range': [-0.5, 0], 'color': "lightred"},
-                        {'range': [0, 0.5], 'color': "lightgreen"},
-                        {'range': [0.5, 1], 'color': "green"}
+                        {'range': [-1, -0.5], 'color': "#ff0000"},  # red
+                        {'range': [-0.5, 0], 'color': "#ff9999"},  # light red
+                        {'range': [0, 0.5], 'color': "#90EE90"},  # light green
+                        {'range': [0.5, 1], 'color': "#008000"}   # green
                     ],
                     'threshold': {
                         'line': {'color': "red", 'width': 4},
