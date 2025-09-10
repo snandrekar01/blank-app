@@ -459,12 +459,12 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                     yanchor="top",
                     y=0.99,
                     xanchor="left",
-                    x=1.05,
+                    x=1.15,  # Moved further right
                     bgcolor='rgba(255, 255, 255, 0.8)',
                     bordercolor='lightgray',
                     borderwidth=1
                 ),
-                margin=dict(r=150),  # Add right margin to make space for legend
+                margin=dict(r=200),  # Increased right margin for more space
                 xaxis=dict(
                     gridcolor='lightgray',
                     zerolinecolor='lightgray',
