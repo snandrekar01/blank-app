@@ -8,6 +8,7 @@ from urllib.parse import urljoin, quote
 from datetime import datetime
 import hashlib
 import plotly.express as px
+import plotly.graph_objects as go
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import statsmodels.api as sm
 
@@ -269,29 +270,89 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             # Model details
             with st.expander("View Model Details"):
                 st.text(model.summary())
-                
-            # Scatter plot with more details
-            recent_data = df_clean[df_clean['Date'] >= (df_clean['Date'].max() - pd.Timedelta(days=365))]
-            fig = px.scatter(
-                recent_data,
-                x="aggregated_daily_compound_avg_lag",
-                y="return",
-                title="Sentiment vs Returns (Last 365 Days)",
-                labels={
-                    "aggregated_daily_compound_avg_lag": "Previous Day Sentiment",
-                    "return": "Return (%)"
+            
+            st.subheader("📊 Visual Insights")
+
+            # 1. Gauge Chart for Today's Sentiment
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=today_sentiment,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={
+                    'axis': {'range': [-1, 1]},
+                    'bar': {'color': "darkblue"},
+                    'steps': [
+                        {'range': [-1, -0.5], 'color': "red"},
+                        {'range': [-0.5, 0], 'color': "lightred"},
+                        {'range': [0, 0.5], 'color': "lightgreen"},
+                        {'range': [0.5, 1], 'color': "green"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': today_sentiment
+                    }
                 },
-                trendline="ols",
-                hover_data=["Date"]
+                title={'text': "Today's Market Sentiment"}
+            ))
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+            # 2. Historical Returns Distribution
+            hist_returns = df_clean['return'].values * 100  # Convert to percentage
+            fig_dist = go.Figure()
+            fig_dist.add_trace(go.Histogram(
+                x=hist_returns,
+                name='Historical Returns',
+                nbinsx=50,
+                opacity=0.7
+            ))
+            fig_dist.add_vline(
+                x=prediction * 100,
+                line_dash="dash",
+                line_color="red",
+                annotation_text="Tomorrow's Prediction"
             )
-            fig.add_vline(x=today_sentiment, line_dash="dash", line_color="red",
-                        annotation_text="Today's Sentiment")
-            fig.update_layout(
-                xaxis_title="Previous Day Sentiment Score",
-                yaxis_title="Return (%)",
-                yaxis_tickformat=".2%"
+            fig_dist.update_layout(
+                title="Where Tomorrow's Prediction Falls",
+                xaxis_title="Return (%)",
+                yaxis_title="Frequency",
+                showlegend=True
             )
-            st.plotly_chart(fig)
+            st.plotly_chart(fig_dist, use_container_width=True)
+
+            # 3. Recent Performance
+            last_30_days = df_clean.tail(30).copy()
+            last_30_days['Predicted'] = model.predict(sm.add_constant(last_30_days['aggregated_daily_compound_avg_lag']))
+            
+            fig_performance = go.Figure()
+            fig_performance.add_trace(go.Scatter(
+                x=last_30_days['Date'],
+                y=last_30_days['return'] * 100,
+                name='Actual Returns',
+                line=dict(color='blue')
+            ))
+            fig_performance.add_trace(go.Scatter(
+                x=last_30_days['Date'],
+                y=last_30_days['Predicted'] * 100,
+                name='Predicted Returns',
+                line=dict(color='red', dash='dash')
+            ))
+            fig_performance.update_layout(
+                title='Model Performance (Last 30 Days)',
+                xaxis_title='Date',
+                yaxis_title='Return (%)',
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig_performance, use_container_width=True)
+
+            # Add some explanatory text
+            st.markdown("""
+            ### 📈 Understanding the Charts
+            
+            1. **Sentiment Gauge**: Shows today's market sentiment from very negative (-1) to very positive (+1)
+            2. **Prediction Distribution**: Shows how tomorrow's predicted return compares to historical returns
+            3. **Recent Performance**: Compares our model's predictions with actual returns over the last 30 days
+            """)
 
         except Exception as e:
             st.session_state["last_prediction"] = {"error": str(e)}
