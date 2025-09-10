@@ -455,6 +455,16 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 hovermode='closest',
                 showlegend=True,
                 plot_bgcolor='white',
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=1.05,
+                    bgcolor='rgba(255, 255, 255, 0.8)',
+                    bordercolor='lightgray',
+                    borderwidth=1
+                ),
+                margin=dict(r=150),  # Add right margin to make space for legend
                 xaxis=dict(
                     gridcolor='lightgray',
                     zerolinecolor='lightgray',
