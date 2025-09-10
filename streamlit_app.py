@@ -179,7 +179,7 @@ if isinstance(df, pd.DataFrame) and not df.empty:
     # Add tooltips for technical terms
     st.info("""
     📊 **Technical Terms:**
-    - **Sentiment Score:** Ranges from -1 (very negative) to +1 (very positive)
+    - **Sentiment Score:** Using VADER's compound score (numerical value from -1 to +1), not just positive/negative classification
     - **Statistical Significance:** p-value < 0.05 indicates reliable prediction
     - **R-squared:** Shows how well sentiment explains return variation
     """)
