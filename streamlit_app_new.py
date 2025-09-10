@@ -83,17 +83,27 @@ def calculate_sentiment_scores(headlines_df: pd.DataFrame) -> float:
     return pd.Series(scores).mean() if scores else 0.0
 
 def fetch_historical_data(client: bigquery.Client) -> pd.DataFrame:
-    """Fetch historical price and sentiment data from BigQuery."""
+    """Fetch historical price and sentiment data from BigQuery.
+    Returns data with latest date and lag information for analysis.
+    """
     query = """
+    WITH latest_date AS (
+        SELECT MAX(Date) as max_date 
+        FROM `project-market-news.Final_data_do_not_touch.final_merged_table`
+    )
     SELECT 
         Date,
         daily_return_pct as return,
         aggregated_daily_compound_avg,
-        LAG(aggregated_daily_compound_avg, 1) OVER(ORDER BY Date) as aggregated_daily_compound_avg_lag
+        LAG(aggregated_daily_compound_avg, 1) OVER(ORDER BY Date) as aggregated_daily_compound_avg_lag,
+        Date = (SELECT max_date FROM latest_date) as is_latest_date
     FROM `project-market-news.Final_data_do_not_touch.final_merged_table`
+    WHERE Date IS NOT NULL
     ORDER BY Date
     """
-    return client.query(query).to_dataframe()
+    df = client.query(query).to_dataframe()
+    df['Date'] = pd.to_datetime(df['Date'])
+    return df
 
 def get_bq_client(project_id_input: str | None) -> bigquery.Client:
     """Initialize BigQuery client."""
@@ -175,7 +185,16 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 # Get historical data and train model
                 client = get_bq_client(project_id.strip())
                 historical_data = fetch_historical_data(client)
+                
+                # Check data freshness
+                latest_date = historical_data['Date'].max()
+                days_old = (datetime.now().date() - latest_date.date()).days
+                st.warning(f"⚠️ Note: Historical data is {days_old} days old (latest date: {latest_date.date()})")
+                
                 df_clean = historical_data.dropna()
+                if len(df_clean) < 30:  # Minimum sample size check
+                    st.error("⚠️ Not enough historical data for reliable prediction (need at least 30 days).")
+                    st.stop()
                 
                 # Train model
                 X = df_clean[["aggregated_daily_compound_avg_lag"]]
@@ -203,19 +222,28 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 with st.expander("View Model Details"):
                     st.text(model.summary())
                     
-                # Scatter plot
+                # Scatter plot with more details
+                recent_data = df_clean[df_clean['Date'] >= (df_clean['Date'].max() - pd.Timedelta(days=365))]
                 fig = px.scatter(
-                    df_clean,
+                    recent_data,
                     x="aggregated_daily_compound_avg_lag",
                     y="return",
-                    title="Historical Sentiment vs Returns",
+                    title="Historical Sentiment vs Next-Day Returns (Last 365 Days)",
                     labels={
-                        "aggregated_daily_compound_avg_lag": "Previous Day Sentiment",
-                        "return": "Return"
+                        "aggregated_daily_compound_avg_lag": "Previous Day News Sentiment (-1 to +1)",
+                        "return": "Next Day Return (%)"
                     },
-                    trendline="ols"
+                    trendline="ols",
+                    hover_data=["Date"]  # Show date on hover
                 )
-                st.plotly_chart(fig)
+                fig.add_vline(x=today_sentiment, line_dash="dash", line_color="red",
+                            annotation_text="Today's Sentiment")
+                fig.update_layout(
+                    hovermode='x unified',
+                    xaxis_title_standoff=25,
+                    yaxis_tickformat='.1%'  # Format y-axis as percentages
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
         except Exception as e:
             st.session_state["last_prediction"] = {"error": str(e)}
