@@ -262,10 +262,18 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 "timestamp": datetime.now()
             }
             
-            # Show prediction
+            # Show prediction with enhanced styling
             st.write("🔮 Tomorrow's Return Prediction")
             pred_color = "green" if prediction > 0 else "red"
-            st.markdown(f"**Predicted return:** ::{pred_color}[{prediction:.2%}]")
+            pred_symbol = "↑" if prediction > 0 else "↓"
+            st.markdown(
+                f"""
+                <div style='background-color: {pred_color}22; padding: 20px; border-radius: 10px; border-left: 5px solid {pred_color}'>
+                    <h3 style='margin:0; color: {pred_color}'>{pred_symbol} {prediction:.2%}</h3>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
                 
             # Model details
             with st.expander("View Model Details"):
@@ -297,28 +305,37 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             ))
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-            # 2. Historical Returns Distribution
-            hist_returns = df_clean['return'].values * 100  # Convert to percentage
-            fig_dist = go.Figure()
-            fig_dist.add_trace(go.Histogram(
-                x=hist_returns,
-                name='Historical Returns',
-                nbinsx=50,
-                opacity=0.7
+            # 2. Predicted Return Gauge
+            # Calculate the typical range of returns (e.g., 90% of historical returns)
+            returns_percentiles = np.percentile(df_clean['return'], [5, 95])
+            min_typical_return = returns_percentiles[0]
+            max_typical_return = returns_percentiles[1]
+            
+            fig_pred = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=prediction * 100,  # Convert to percentage
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={
+                    'axis': {
+                        'range': [min_typical_return * 100, max_typical_return * 100],
+                        'tickformat': '.1f',
+                        'ticksuffix': '%'
+                    },
+                    'bar': {'color': pred_color},
+                    'steps': [
+                        {'range': [min_typical_return * 100, 0], 'color': "#ff9999"},  # light red
+                        {'range': [0, max_typical_return * 100], 'color': "#90EE90"}   # light green
+                    ],
+                    'threshold': {
+                        'line': {'color': pred_color, 'width': 4},
+                        'thickness': 0.75,
+                        'value': prediction * 100
+                    }
+                },
+                number={'suffix': '%', 'valueformat': '.2f'},
+                title={'text': "Predicted Return (Typical Range: 90% of Historical Returns)"}
             ))
-            fig_dist.add_vline(
-                x=prediction * 100,
-                line_dash="dash",
-                line_color="red",
-                annotation_text="Tomorrow's Prediction"
-            )
-            fig_dist.update_layout(
-                title="Where Tomorrow's Prediction Falls",
-                xaxis_title="Return (%)",
-                yaxis_title="Frequency",
-                showlegend=True
-            )
-            st.plotly_chart(fig_dist, use_container_width=True)
+            st.plotly_chart(fig_pred, use_container_width=True)
 
             # 3. Recent Performance
             last_30_days = df_clean.tail(30).copy()
