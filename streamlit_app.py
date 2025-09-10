@@ -345,34 +345,85 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             ))
             st.plotly_chart(fig_pred, use_container_width=True)
 
-            # 3. Model Fit Visualization
+            # 3. Model Fit Visualization with Focus on Typical Range
             fig_model_fit = go.Figure()
             
-            # Sort by sentiment for better visualization
-            sorted_data = df_clean.sort_values('aggregated_daily_compound_avg_lag')
+            # Calculate typical ranges (remove extreme outliers)
+            returns_percentiles = np.percentile(df_clean['return'], [1, 99])
+            sentiment_percentiles = np.percentile(df_clean['aggregated_daily_compound_avg_lag'], [1, 99])
+            
+            # Filter data to typical range
+            mask = (
+                (df_clean['return'] >= returns_percentiles[0]) &
+                (df_clean['return'] <= returns_percentiles[1]) &
+                (df_clean['aggregated_daily_compound_avg_lag'] >= sentiment_percentiles[0]) &
+                (df_clean['aggregated_daily_compound_avg_lag'] <= sentiment_percentiles[1])
+            )
+            typical_data = df_clean[mask]
+            
+            # Sort filtered data for trend line
+            sorted_data = typical_data.sort_values('aggregated_daily_compound_avg_lag')
             X_sorted = sorted_data['aggregated_daily_compound_avg_lag']
             
-            # Actual returns vs sentiment scatter plot
+            # Calculate kernel density estimate for better visualization
+            from scipy.stats import gaussian_kde
+            xy = np.vstack([typical_data['aggregated_daily_compound_avg_lag'], typical_data['return'] * 100])
+            z = gaussian_kde(xy)(xy)
+            
+            # Actual returns vs sentiment scatter plot with density coloring
             fig_model_fit.add_trace(go.Scatter(
-                x=df_clean['aggregated_daily_compound_avg_lag'],
-                y=df_clean['return'] * 100,
+                x=typical_data['aggregated_daily_compound_avg_lag'],
+                y=typical_data['return'] * 100,
                 mode='markers',
                 name='Historical Returns',
                 marker=dict(
-                    color='rgba(0, 0, 255, 0.5)',  # Semi-transparent blue
-                    size=8,
-                    opacity=0.6
-                )
+                    color=z,
+                    colorscale='Blues',
+                    size=10,
+                    opacity=0.7,
+                    showscale=True,
+                    colorbar=dict(
+                        title='Density',
+                        thickness=20
+                    )
+                ),
+                hovertemplate='Sentiment: %{x:.3f}<br>Return: %{y:.2f}%<extra></extra>'
             ))
             
             # Model prediction line
-            y_pred = model.predict(sm.add_constant(X_sorted)) * 100
+            X_trend = sm.add_constant(X_sorted)
+            y_pred = model.predict(X_trend) * 100
             fig_model_fit.add_trace(go.Scatter(
                 x=X_sorted,
                 y=y_pred,
                 mode='lines',
                 name='Model Trend',
-                line=dict(color='red', width=2)
+                line=dict(color='red', width=3),
+                hovertemplate='Sentiment: %{x:.3f}<br>Expected Return: %{y:.2f}%<extra></extra>'
+            ))
+            
+            # Add confidence interval
+            from scipy import stats
+            y_pred_full = model.get_prediction(X_trend)
+            ci = y_pred_full.conf_int(0.95) * 100
+            
+            # Add confidence interval as a filled area
+            fig_model_fit.add_trace(go.Scatter(
+                x=X_sorted,
+                y=ci[:, 0],
+                mode='lines',
+                line=dict(width=0),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+            fig_model_fit.add_trace(go.Scatter(
+                x=X_sorted,
+                y=ci[:, 1],
+                mode='lines',
+                fill='tonexty',
+                name='95% Confidence',
+                line=dict(width=0),
+                fillcolor='rgba(255, 0, 0, 0.1)'
             ))
             
             # Add today's prediction point
@@ -383,20 +434,37 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 name="Today's Prediction",
                 marker=dict(
                     color='green',
-                    size=15,
-                    symbol='star'
-                )
+                    size=20,
+                    symbol='star',
+                    line=dict(
+                        color='darkgreen',
+                        width=2
+                    )
+                ),
+                hovertemplate='Today\'s Sentiment: %{x:.3f}<br>Predicted Return: %{y:.2f}%<extra></extra>'
             ))
             
+            # Update layout with improved styling
             fig_model_fit.update_layout(
                 title={
-                    'text': 'Historical Relationship: Sentiment vs Returns',
+                    'text': 'Sentiment-Return Relationship (Typical Range)',
                     'y':0.95
                 },
                 xaxis_title='Previous Day Sentiment Score',
                 yaxis_title='Return (%)',
                 hovermode='closest',
                 showlegend=True,
+                plot_bgcolor='white',
+                xaxis=dict(
+                    gridcolor='lightgray',
+                    zerolinecolor='lightgray',
+                    tickformat='.2f'
+                ),
+                yaxis=dict(
+                    gridcolor='lightgray',
+                    zerolinecolor='lightgray',
+                    tickformat='.2f'
+                ),
                 annotations=[
                     dict(
                         x=0.02,
