@@ -209,18 +209,6 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             progress_bar.progress(50)
             today_sentiment = compound_avg
             
-            st.write("📊 Today's News Sentiment")
-            sentiment_color = "green" if today_sentiment > 0 else "red"
-            sentiment_symbol = "↑" if today_sentiment > 0 else "↓"
-            st.markdown(
-                f"""
-                <div style='background-color: {sentiment_color}22; padding: 20px; border-radius: 10px; border-left: 5px solid {sentiment_color}'>
-                    <h3 style='margin:0; color: {sentiment_color}'>{sentiment_symbol} {today_sentiment:.3f}</h3>
-                </div>
-                """
-                , unsafe_allow_html=True
-            )
-            
             # Step 3: Fetch historical data
             progress_placeholder.text("Step 3/4: Fetching historical data...")
             progress_bar.progress(75)
@@ -269,19 +257,6 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 "model": model,
                 "timestamp": datetime.now()
             }
-            
-            # Show prediction with enhanced styling
-            st.write("🔮 Tomorrow's Return Prediction")
-            pred_color = "green" if prediction > 0 else "red"
-            pred_symbol = "↑" if prediction > 0 else "↓"
-            st.markdown(
-                f"""
-                <div style='background-color: {pred_color}22; padding: 20px; border-radius: 10px; border-left: 5px solid {pred_color}'>
-                    <h3 style='margin:0; color: {pred_color}'>{pred_symbol} {prediction:.2%}</h3>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
                 
             # Model details
             with st.expander("View Model Details"):
@@ -329,13 +304,13 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                         'tickformat': '.1f',
                         'ticksuffix': '%'
                     },
-                    'bar': {'color': pred_color},
+                    'bar': {'color': "#008000" if prediction > 0 else "#ff0000"},
                     'steps': [
                         {'range': [min_typical_return * 100, 0], 'color': "#ff9999"},  # light red
                         {'range': [0, max_typical_return * 100], 'color': "#90EE90"}   # light green
                     ],
                     'threshold': {
-                        'line': {'color': pred_color, 'width': 4},
+                        'line': {'color': "#008000" if prediction > 0 else "#ff0000", 'width': 4},
                         'thickness': 0.75,
                         'value': prediction * 100
                     }
