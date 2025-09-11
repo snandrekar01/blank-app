@@ -25,7 +25,7 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-st.set_page_config(page_title="S&P 500 News & Predictions", page_icon="📈", layout="wide")
+st.set_page_config(page_title="S&P 500 News & Predictions", page_icon="📈", layout="centered")
 
 # ---- helper functions ----------------------------------------------------------------
 
@@ -259,11 +259,8 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             }
                 
             # Model details
-
-            with st.expander("View Model Details", expanded=True):
-                 st.text_area("Model summary", model.summary, height=600,
-                 label_visibility="collapsed", disabled=True)
-
+            with st.expander("View Model Details"):
+                st.text(model.summary())
             
             st.subheader("📊 Visual Insights")
 
@@ -468,49 +465,18 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             )
             st.plotly_chart(fig_model_fit, use_container_width=True)
 
-            # Add chart explanation in an expander
-            with st.expander("📈 Understanding the Charts", expanded=False):
-                st.markdown("""
-                <style>
-                .chart-explanation {
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin-bottom: 10px;
-                }
-                .chart-title {
-                    color: #1E88E5;
-                    font-weight: bold;
-                    margin-bottom: 5px;
-                }
-                </style>
-                
-                <div class="chart-explanation">
-                    <div class="chart-title">🎯 Sentiment Gauge</div>
-                    Shows the market's emotional temperature today:
-                    - 🔴 -1.0 to -0.5: Very Negative
-                    - 🟡 -0.5 to 0.0: Slightly Negative
-                    - 🟢 0.0 to 0.5: Slightly Positive
-                    - 🟦 0.5 to 1.0: Very Positive
-                </div>
-
-                <div class="chart-explanation">
-                    <div class="chart-title">📊 Return Prediction</div>
-                    Forecasts tomorrow's likely market movement:
-                    - Shows expected return as a percentage
-                    - Green zone indicates positive returns
-                    - Red zone indicates negative returns
-                    - Based on 90% of typical historical movements
-                </div>
-
-                <div class="chart-explanation">
-                    <div class="chart-title">📉 Historical Pattern Analysis</div>
-                    Visualizes the sentiment-return relationship:
-                    - 🔵 Blue dots: Historical data points (darker = more frequent)
-                    - ❤️ Red line: Model's discovered trend
-                    - ⭐ Green star: Today's prediction
-                    - 📏 R² value: Model's accuracy score (higher = better fit)
-                </div>
-                """, unsafe_allow_html=True)
+            # Add some explanatory text
+            st.markdown("""
+            ### 📈 Understanding the Charts
+            
+            1. **Sentiment Gauge**: Shows today's market sentiment from very negative (-1) to very positive (+1)
+            2. **Return Prediction**: Shows predicted return within typical market movement range (90% of historical returns)
+            3. **Historical Relationship**: Shows how sentiment relates to returns:
+                - Blue dots: Past market returns
+                - Red line: Overall trend found by the model
+                - Green star: Where today's prediction falls
+                - R² value shows how well sentiment explains return variations (higher is better)
+            """)
 
         except Exception as e:
             st.session_state["last_prediction"] = {"error": str(e)}
