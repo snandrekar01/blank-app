@@ -468,7 +468,7 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             st.plotly_chart(fig_model_fit, use_container_width=True)
 
             # Add some explanatory text
-            st.markdown("""
+            st.expander("""
             ### 📈 Understanding the Charts
             
             1. **Sentiment Gauge**: Shows today's market sentiment from very negative (-1) to very positive (+1)
@@ -478,7 +478,7 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 - Red line: Overall trend found by the model
                 - Green star: Where today's prediction falls
                 - R² value shows how well sentiment explains return variations (higher is better)
-            """)
+            """,expanded=False)
 
         except Exception as e:
             st.session_state["last_prediction"] = {"error": str(e)}
