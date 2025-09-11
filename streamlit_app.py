@@ -25,7 +25,7 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-st.set_page_config(page_title="S&P 500 News & Predictions", page_icon="📈", layout="centered")
+st.set_page_config(page_title="S&P 500 News & Predictions", page_icon="📈", layout="wide")
 
 # ---- helper functions ----------------------------------------------------------------
 
