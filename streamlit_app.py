@@ -25,7 +25,7 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-st.set_page_config(page_title="S&P 500 News & Predictions", page_icon="📈", layout="centered")
+st.set_page_config(page_title="S&P 500 News & Predictions", page_icon="📈", layout="wide")
 
 # ---- helper functions ----------------------------------------------------------------
 
@@ -258,9 +258,11 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 "timestamp": datetime.now()
             }
                 
-            # Model details
-            with st.expander("View Model Details"):
-                st.text(model.summary())
+            # Model details (monospace, scrollable, aligned)
+            summary = model.summary().as_text()  # or: str(model.summary())
+            with st.expander("View Model Details", expanded=True):
+                st.code(summary, language="text")  # preserves spacing & adds horiz. scroll
+
             
             st.subheader("📊 Visual Insights")
 
