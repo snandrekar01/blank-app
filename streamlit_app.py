@@ -259,8 +259,11 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             }
                 
             # Model details
-            with st.expander("View Model Details"):
-                st.str(model.summary())
+
+            with st.expander("View Model Details", expanded=True):
+                 st.text_area("Model summary", summary, height=600,
+                 label_visibility="collapsed", disabled=True)
+
             
             st.subheader("📊 Visual Insights")
 
