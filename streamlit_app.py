@@ -466,7 +466,7 @@ if isinstance(df, pd.DataFrame) and not df.empty:
             st.plotly_chart(fig_model_fit, use_container_width=True)
 
             # Add chart explanation in an expander
-            with st.expander("📈 Understanding the Charts", expanded=True):
+            with st.expander("📈 Understanding the Charts", expanded=False):
                 st.markdown("""
                 <style>
                 .chart-explanation {
