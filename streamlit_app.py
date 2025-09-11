@@ -260,7 +260,7 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 
             # Model details
             with st.expander("View Model Details"):
-                st.text(model.summary())
+                st.str(model.summary()))
             
             st.subheader("📊 Visual Insights")
 
