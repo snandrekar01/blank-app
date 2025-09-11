@@ -260,7 +260,7 @@ if isinstance(df, pd.DataFrame) and not df.empty:
                 
             # Model details (monospace, scrollable, aligned)
             summary = model.summary().as_text()  # or: str(model.summary())
-            with st.expander("View Model Details", expanded=True):
+            with st.expander("View Model Details", expanded=False):
                 st.code(summary, language="text")  # preserves spacing & adds horiz. scroll
 
             
